@@ -1,0 +1,118 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root {
+    --color-noir-light: #FAF9F6;
+    --color-noir-dark: #121212;
+    --color-noir-gold: #9A8C73;
+    --color-noir-sand: #C4B7A6;
+    --color-noir-sage: #7C9082;
+    --color-noir-charcoal: #1D1D1D;
+    --color-noir-border: rgba(29, 29, 29, 0.09);
+    --color-noir-darkBorder: rgba(250, 249, 246, 0.1);
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: #FAF9F6;
+    color: #1D1D1D;
+    transition: background-color 0.3s ease, color 0.3s ease;
+  }
+
+  .dark body,
+  html.dark body {
+    background-color: #121212;
+    color: #FAF9F6;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-serif {
+    font-family: 'Newsreader', Georgia, serif;
+    letter-spacing: -0.02em;
+  }
+}
+
+.font-serif {
+  font-family: 'Newsreader', Georgia, serif;
+}
+
+.font-sans {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.border-noir-border {
+  border-color: rgba(29, 29, 29, 0.1);
+}
+
+.dark .border-noir-darkBorder,
+.dark .dark\:border-noir-darkBorder {
+  border-color: rgba(250, 249, 246, 0.1);
+}
+
+.bg-noir-light {
+  background-color: #FAF9F6;
+}
+
+.bg-noir-dark {
+  background-color: #141414;
+}
+
+.text-noir-gold {
+  color: #9A8C73;
+}
+
+.bg-noir-gold {
+  background-color: #9A8C73;
+}
+
+.border-noir-gold {
+  border-color: #9A8C73;
+}
+
+.bg-noise {
+  background-image: url('https://www.transparenttextures.com/patterns/noise.png');
+}
+
+@keyframes marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-marquee-50s {
+  animation: marquee 50s linear infinite;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.fade-in {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 1s cubic-bezier(0.16, 1, 0.3, 1), transform 1s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.fade-in.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Quirk preservation from source */
+[data-element-id="aura-emlha1y43ku4iwvs"] + div {
+  display: none !important;
+}

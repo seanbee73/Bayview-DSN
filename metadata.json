@@ -1,0 +1,7 @@
+{
+  "name": "Bayview Mall Creative Hair Dsn",
+  "description": "Premier Italian barber and creative hair styling salon in North York at Bayview-Cummer Shopping Centre led by Master Barber Joe and Roya.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
