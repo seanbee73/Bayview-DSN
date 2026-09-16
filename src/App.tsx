@@ -54,7 +54,15 @@ export default function App() {
       const saved = localStorage.getItem('bmch_posts');
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed: SalonPost[] = JSON.parse(saved);
+          // Sync default post images so updates to salonData immediately reflect
+          return parsed.map((p) => {
+            const def = DEFAULT_POSTS.find((dp) => dp.id === p.id);
+            if (def) {
+              return { ...p, imageUrl: def.imageUrl };
+            }
+            return p;
+          });
         } catch {
           return DEFAULT_POSTS;
         }
@@ -69,7 +77,14 @@ export default function App() {
       const saved = localStorage.getItem('bmch_lookbook');
       if (saved) {
         try {
-          return JSON.parse(saved);
+          const parsed: LookbookItem[] = JSON.parse(saved);
+          return parsed.map((item) => {
+            const def = LOOKBOOK_DATA.items.find((di) => di.id === item.id);
+            if (def) {
+              return { ...item, src: def.src, image: def.image };
+            }
+            return item;
+          });
         } catch {
           return LOOKBOOK_DATA.items;
         }

@@ -72,7 +72,7 @@ export const ConsultationProcess: React.FC = () => {
           {/* Image Content (Right) */}
           <div className="order-1 lg:order-2 relative h-[450px] lg:h-[600px] overflow-hidden group border border-[#1D1D1D]/10 dark:border-white/10">
             <img
-              src="https://images.unsplash.com/photo-1599351431202-1e0f0137899a?w=1000&q=80"
+              src="https://ik.imagekit.io/kevfun/IMG-20260915-WA4829.jpg"
               className="absolute inset-0 w-full h-full object-cover transition-transform duration-1000 group-hover:scale-105"
               alt="Italian Barber Scissor Precision at Bayview Mall Creative Hair Dsn"
             />
