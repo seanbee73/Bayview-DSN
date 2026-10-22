@@ -2,7 +2,11 @@ import React from 'react';
 import { UserCheck, Scissors, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
 import { BRAND_DATA, HERITAGE_DATA } from '../data/salonData';
 
-export const ConsultationProcess: React.FC = () => {
+interface ConsultationProcessProps {
+  onOpenChat?: () => void;
+}
+
+export const ConsultationProcess: React.FC<ConsultationProcessProps> = ({ onOpenChat }) => {
   return (
     <section className="py-24 border-b border-[#1D1D1D]/10 dark:border-white/10 bg-[#FAF9F6] dark:bg-[#121212] fade-in transition-colors duration-300 font-sans">
       <div className="max-w-7xl mx-auto px-6">
@@ -61,12 +65,25 @@ export const ConsultationProcess: React.FC = () => {
               </li>
             </ul>
 
-            <a
-              href="#craftsmen"
-              className="inline-flex items-center gap-2 border-b border-[#1D1D1D] dark:border-white pb-1 text-xs uppercase tracking-[0.2em] font-semibold hover:text-[#9A8C73] hover:border-[#9A8C73] dark:hover:text-[#9A8C73] dark:hover:border-[#9A8C73] transition-colors"
-            >
-              Meet Joe & Roya <ArrowRight size={14} />
-            </a>
+            <div className="flex flex-wrap items-center gap-6">
+              <a
+                href="#craftsmen"
+                className="inline-flex items-center gap-2 border-b border-[#1D1D1D] dark:border-white pb-1 text-xs uppercase tracking-[0.2em] font-semibold hover:text-[#9A8C73] hover:border-[#9A8C73] dark:hover:text-[#9A8C73] dark:hover:border-[#9A8C73] transition-colors"
+              >
+                Meet Joe & Roya <ArrowRight size={14} />
+              </a>
+
+              {onOpenChat && (
+                <button
+                  type="button"
+                  onClick={onOpenChat}
+                  className="inline-flex items-center gap-2 bg-[#9A8C73]/15 text-[#9A8C73] dark:text-amber-400 hover:bg-[#9A8C73]/25 px-4 py-2 text-xs uppercase tracking-[0.15em] font-semibold transition-colors cursor-pointer border border-[#9A8C73]/30"
+                >
+                  <Sparkles size={13} className="text-amber-500" />
+                  <span>Ask Joe's AI Barber Chair</span>
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Image Content (Right) */}

@@ -17,6 +17,8 @@ import { LookbookModal } from './components/LookbookModal';
 import { StylistModal } from './components/StylistModal';
 import { PostModal } from './components/PostModal';
 import { AdminModal } from './components/AdminModal';
+import { GeminiChatModal } from './components/GeminiChatModal';
+import { GeminiChatFloatingButton } from './components/GeminiChatFloatingButton';
 import {
   Stylist,
   LookbookItem,
@@ -42,6 +44,7 @@ export default function App() {
   // Modal States
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<SignatureService | AdditionalService | null>(null);
   const [selectedStylistForBooking, setSelectedStylistForBooking] = useState<string | undefined>(undefined);
   const [activeLookbookItem, setActiveLookbookItem] = useState<LookbookItem | null>(null);
@@ -329,6 +332,7 @@ export default function App() {
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
         onOpenBooking={handleOpenBooking}
+        onOpenChat={() => setChatModalOpen(true)}
         announcement={announcement}
         isAdmin={Boolean(adminSession?.authenticated)}
         onOpenAdmin={() => setAdminModalOpen(true)}
@@ -350,7 +354,7 @@ export default function App() {
       <Testimonial />
 
       {/* Head Contour Consultation & Analysis Process */}
-      <ConsultationProcess />
+      <ConsultationProcess onOpenChat={() => setChatModalOpen(true)} />
 
       {/* Master Craftsmen: Joe & Roya */}
       <TeamSection onSelectStylist={handleSelectStylist} />
@@ -433,6 +437,20 @@ export default function App() {
         adminSession={adminSession}
         onLogin={handleAdminLogin}
         onLogout={handleAdminLogout}
+      />
+
+      {/* Floating Salon AI Style Concierge Launcher */}
+      <GeminiChatFloatingButton
+        isOpen={chatModalOpen}
+        onClick={() => setChatModalOpen(true)}
+      />
+
+      {/* Gemini Multi-Turn Chatbot Modal */}
+      <GeminiChatModal
+        isOpen={chatModalOpen}
+        onClose={() => setChatModalOpen(false)}
+        onOpenBooking={handleOpenBooking}
+        onBookWithStylist={handleBookWithStylist}
       />
     </div>
   );

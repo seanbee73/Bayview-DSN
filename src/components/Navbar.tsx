@@ -7,6 +7,7 @@ interface NavbarProps {
   darkMode: boolean;
   onToggleTheme: () => void;
   onOpenBooking: () => void;
+  onOpenChat?: () => void;
   announcement?: AnnouncementInfo;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
@@ -16,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   onToggleTheme,
   onOpenBooking,
+  onOpenChat,
   announcement = ANNOUNCEMENT_DATA,
   isAdmin = false,
   onOpenAdmin,
@@ -112,6 +114,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               Hours & Location
             </a>
+            {onOpenChat && (
+              <button
+                type="button"
+                onClick={onOpenChat}
+                className="text-xs uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 hover:text-[#9A8C73] dark:hover:text-amber-300 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Sparkles size={13} className="text-amber-500" />
+                <span>AI Concierge</span>
+              </button>
+            )}
           </div>
 
           {/* Actions */}
@@ -210,6 +222,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 Hours & Mall Location
               </a>
+              {onOpenChat && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    onOpenChat();
+                  }}
+                  className="text-left text-xs uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 hover:text-amber-500 font-semibold flex items-center gap-2 cursor-pointer py-1"
+                >
+                  <Sparkles size={14} className="text-amber-500" />
+                  <span>AI Style Concierge (Gemini)</span>
+                </button>
+              )}
               {onOpenAdmin && (
                 <button
                   onClick={() => {
