@@ -21,10 +21,13 @@ import { BRAND_DATA } from '../data/salonData';
 
 interface TranscriptItem {
   id: string;
+  turnId?: string;
   role: 'user' | 'assistant';
-  text: string;
+  text: string;            // target full text
+  displayedText?: string;   // animated typewriter text
   time: string;
   audioUrl?: string;
+  isTyping?: boolean;
 }
 
 interface VoiceConversationModalProps {
@@ -70,11 +73,56 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
 
   const sessionRef = useRef<LiveVoiceSession | null>(null);
   const transcriptEndRef = useRef<HTMLDivElement | null>(null);
+  const activeTurnIdRef = useRef<string | null>(null);
 
   // Auto-scroll transcripts
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [transcripts]);
+
+  // Option 1: Synchronized Typewriter Animation Loop
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const interval = setInterval(() => {
+      let needsScroll = false;
+
+      setTranscripts((prev) => {
+        let changed = false;
+        const updated = prev.map((item) => {
+          if (item.role !== 'assistant') return item;
+
+          const target = item.text || '';
+          const current = item.displayedText || '';
+
+          if (current.length < target.length) {
+            changed = true;
+            needsScroll = true;
+            // Dynamically calculate typewriter speed based on backlog length
+            const diff = target.length - current.length;
+            const step = diff > 50 ? 4 : diff > 20 ? 2 : 1;
+            const nextText = target.slice(0, current.length + step);
+            const finished = nextText.length === target.length && !item.isTyping;
+
+            return {
+              ...item,
+              displayedText: nextText,
+              isTyping: !finished,
+            };
+          }
+          return item;
+        });
+
+        return changed ? updated : prev;
+      });
+
+      if (needsScroll) {
+        transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }
+    }, 20);
+
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   // Connect when modal opens
   useEffect(() => {
@@ -103,15 +151,71 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
       onTranscript: ({ role, text }) => {
         const now = new Date();
         const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-        setTranscripts((prev) => [
-          ...prev,
-          {
-            id: `${Date.now()}-${Math.random()}`,
-            role,
-            text,
-            time,
-          },
-        ]);
+
+        if (role === 'user') {
+          const newTurnId = `turn-${Date.now()}`;
+          activeTurnIdRef.current = newTurnId;
+          setTranscripts((prev) => [
+            ...prev,
+            {
+              id: `${Date.now()}-${Math.random()}`,
+              turnId: newTurnId,
+              role: 'user',
+              text,
+              displayedText: text,
+              time,
+            },
+          ]);
+        } else {
+          // Assistant transcript streaming
+          const currentTurnId = activeTurnIdRef.current || `turn-${Date.now()}`;
+          activeTurnIdRef.current = currentTurnId;
+
+          setTranscripts((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+
+            if (
+              lastIndex >= 0 &&
+              updated[lastIndex].role === 'assistant' &&
+              updated[lastIndex].turnId === currentTurnId
+            ) {
+              const existing = updated[lastIndex];
+              const newFullText = existing.text + (existing.text ? ' ' : '') + text;
+              updated[lastIndex] = {
+                ...existing,
+                text: newFullText,
+                isTyping: true,
+              };
+            } else {
+              updated.push({
+                id: `${Date.now()}-${Math.random()}`,
+                turnId: currentTurnId,
+                role: 'assistant',
+                text,
+                displayedText: '',
+                isTyping: true,
+                time,
+              });
+            }
+            return updated;
+          });
+        }
+      },
+      onTurnComplete: () => {
+        activeTurnIdRef.current = null;
+        setTranscripts((prev) => {
+          const updated = [...prev];
+          if (updated.length > 0 && updated[updated.length - 1].role === 'assistant') {
+            const last = updated[updated.length - 1];
+            updated[updated.length - 1] = {
+              ...last,
+              displayedText: last.text,
+              isTyping: false,
+            };
+          }
+          return updated;
+        });
       },
       onAudioLevel: (userLvl, aiLvl) => {
         setUserAudioLevel(userLvl);
@@ -141,7 +245,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
         setErrorMessage(err);
       },
       onInterrupted: () => {
-        // AI speech interrupted by user
+        activeTurnIdRef.current = null;
       },
     });
 
@@ -509,7 +613,12 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                       : 'bg-[#F2EFE9] dark:bg-[#222222] text-[#1D1D1D] dark:text-[#FAF9F6] border border-[#1D1D1D]/10 dark:border-white/10'
                   }`}
                 >
-                  <p>{t.text}</p>
+                  <p className="whitespace-pre-wrap">
+                    {t.role === 'assistant' ? (t.displayedText || t.text) : t.text}
+                    {t.role === 'assistant' && (t.isTyping || (t.displayedText || '').length < t.text.length) && (
+                      <span className="inline-block w-1.5 h-3.5 bg-[#9A8C73] dark:bg-amber-400 ml-1 animate-pulse align-middle" />
+                    )}
+                  </p>
                   {t.role === 'assistant' && (
                     <div className="mt-2.5 pt-2 border-t border-black/5 dark:border-white/10 flex items-center justify-between gap-2">
                       <button
@@ -526,8 +635,8 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                         <Volume2 size={12} />
                         <span>Hear Voice</span>
                       </button>
-                      <span className="text-[10px] text-neutral-400 font-sans">
-                        Gemini 3.8 Live
+                      <span className="text-[10px] text-neutral-400 font-sans font-medium">
+                        {(t.isTyping || (t.displayedText || '').length < t.text.length) ? 'Live Subtitles...' : 'Gemini 3.8 Live'}
                       </span>
                     </div>
                   )}
@@ -545,7 +654,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
               type="text"
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
-              placeholder="Ask Joe & Roya anything (live voice audio responds)..."
+              placeholder="Ask Joe & Roya anything (live subtitles & voice respond)..."
               className="flex-1 bg-white dark:bg-[#202020] border border-neutral-300 dark:border-neutral-700 px-3 py-2 text-xs focus:outline-none focus:border-[#9A8C73] text-[#1D1D1D] dark:text-[#FAF9F6]"
             />
             <button

@@ -116,6 +116,7 @@ export function pcm16ToAudioBuffer(arrayBuffer: ArrayBuffer, audioCtx: AudioCont
 export interface LiveVoiceCallbacks {
   onStatusChange: (status: 'disconnected' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error') => void;
   onTranscript: (item: { role: 'user' | 'assistant'; text: string; audioUrl?: string }) => void;
+  onTurnComplete?: () => void;
   onAudioLevel?: (userLevel: number, aiLevel: number) => void;
   onMicStatusChange?: (hasMic: boolean, reason?: string) => void;
   onAudioReady?: (audioUrl: string) => void;
@@ -218,6 +219,7 @@ export class LiveVoiceSession {
           } else if (msg.type === 'turnComplete') {
             this.finalizeTurnAudio();
             this.isSpeaking = false;
+            this.callbacks.onTurnComplete?.();
             this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
           } else if (msg.type === 'error') {
             console.warn('Live API warning/error:', msg.error);
