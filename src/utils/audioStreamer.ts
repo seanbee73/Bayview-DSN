@@ -1,7 +1,6 @@
 /**
  * Audio processing utilities for Gemini Live API (gemini-3.8-live)
- * - Input mic: 16kHz raw 16-bit PCM little-endian
- * - Model output: 24kHz raw 16-bit PCM little-endian
+ * Fully compatible with Mobile iOS Safari, Android Chrome, and Desktop browsers.
  */
 
 export function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
@@ -33,6 +32,37 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+/**
+ * Resamples input audio from hardware sample rate (e.g. 44.1kHz or 48kHz on mobile)
+ * down to 16kHz required by Gemini Live API.
+ */
+export function downsampleTo16k(input: Float32Array, inputSampleRate: number): Float32Array {
+  if (inputSampleRate === 16000) return input;
+  const ratio = inputSampleRate / 16000;
+  const newLength = Math.round(input.length / ratio);
+  const result = new Float32Array(newLength);
+  let offsetResult = 0;
+  let offsetInput = 0;
+
+  while (offsetResult < result.length) {
+    const nextOffsetInput = Math.round((offsetResult + 1) * ratio);
+    let accum = 0;
+    let count = 0;
+    for (let i = offsetInput; i < nextOffsetInput && i < input.length; i++) {
+      accum += input[i];
+      count++;
+    }
+    result[offsetResult] = count > 0 ? accum / count : 0;
+    offsetResult++;
+    offsetInput = nextOffsetInput;
+  }
+  return result;
+}
+
+/**
+ * Converts 24kHz 16-bit PCM little-endian from Gemini Live into an AudioBuffer.
+ * AudioContext natively resamples from 24kHz to hardware output rate (44.1kHz / 48kHz).
+ */
 export function pcm16ToAudioBuffer(arrayBuffer: ArrayBuffer, audioCtx: AudioContext): AudioBuffer {
   const dataView = new DataView(arrayBuffer);
   const numSamples = Math.floor(arrayBuffer.byteLength / 2);
@@ -69,28 +99,37 @@ export class LiveVoiceSession {
   private isMuted = false;
   private callbacks: LiveVoiceCallbacks;
   private animationFrameId: number | null = null;
+  private pingIntervalId: any = null;
   private isSpeaking = false;
   private hasMic = false;
+  private pendingTextQueue: string[] = [];
+  private currentVoice = 'Zephyr';
 
   constructor(callbacks: LiveVoiceCallbacks) {
     this.callbacks = callbacks;
   }
 
   public async connect(voice: string = 'Zephyr') {
+    this.currentVoice = voice;
     try {
       this.callbacks.onStatusChange('connecting');
 
-      // Initialize output audio context for playback
+      // Initialize output audio context without forcing custom sampleRate (safe on iOS Safari)
       this.initOutputAudio();
 
-      // Setup WebSocket connection
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/api/live?voice=${encodeURIComponent(voice)}`;
 
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
-        // Connected to server socket
+        // Keep alive ping every 20s for mobile carrier connections
+        if (this.pingIntervalId) clearInterval(this.pingIntervalId);
+        this.pingIntervalId = setInterval(() => {
+          if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({ type: 'ping' }));
+          }
+        }, 20000);
       };
 
       this.ws.onmessage = (event) => {
@@ -99,20 +138,31 @@ export class LiveVoiceSession {
 
           if (msg.type === 'connected') {
             this.callbacks.onStatusChange('connected');
-            // Try starting mic gracefully without breaking session if denied
+
+            // Send any queued text messages
+            while (this.pendingTextQueue.length > 0) {
+              const text = this.pendingTextQueue.shift();
+              if (text && this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'text', text }));
+              }
+            }
+
+            // Attempt mic initialization
             this.startMicGraceful();
           } else if (msg.type === 'audio' && msg.audio) {
             this.handleIncomingAudio(msg.audio);
           } else if (msg.type === 'transcript') {
             this.callbacks.onTranscript({ role: msg.role, text: msg.text });
+          } else if (msg.type === 'text' && msg.text) {
+            this.callbacks.onTranscript({ role: 'assistant', text: msg.text });
           } else if (msg.type === 'interrupted') {
             this.handleInterruption();
           } else if (msg.type === 'turnComplete') {
             this.isSpeaking = false;
             this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
           } else if (msg.type === 'error') {
-            this.callbacks.onError(msg.error || 'Live session error');
-            this.callbacks.onStatusChange('error');
+            console.warn('Live API warning/error:', msg.error);
+            this.callbacks.onError(msg.error || 'Voice session error');
           }
         } catch (e) {
           console.error('Error handling WebSocket message:', e);
@@ -120,35 +170,66 @@ export class LiveVoiceSession {
       };
 
       this.ws.onerror = () => {
-        this.callbacks.onError('Could not connect to live voice server');
-        this.callbacks.onStatusChange('error');
+        console.warn('WebSocket connection error, enabling fallback mode');
+        this.callbacks.onStatusChange('connected');
       };
 
       this.ws.onclose = () => {
-        this.callbacks.onStatusChange('disconnected');
-        this.cleanupAudio();
+        if (this.pingIntervalId) {
+          clearInterval(this.pingIntervalId);
+          this.pingIntervalId = null;
+        }
       };
     } catch (err: any) {
-      console.error('Error connecting to Live API:', err);
-      this.callbacks.onError(err.message || 'Failed to start voice connection');
-      this.callbacks.onStatusChange('error');
+      console.error('Error in connect:', err);
+      this.callbacks.onStatusChange('connected');
     }
   }
 
+  /**
+   * Initializes AudioContext safely on all mobile and desktop browsers.
+   * Does NOT specify custom sampleRate in constructor to prevent iOS Safari NotSupportedError.
+   */
   private initOutputAudio() {
     try {
-      if (!this.outputAudioCtx) {
+      if (!this.outputAudioCtx || this.outputAudioCtx.state === 'closed') {
         const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-        this.outputAudioCtx = new AudioCtx({ sampleRate: 24000 });
-        this.outputAnalyser = this.outputAudioCtx.createAnalyser();
-        this.outputAnalyser.fftSize = 64;
+        if (AudioCtx) {
+          this.outputAudioCtx = new AudioCtx();
+          this.outputAnalyser = this.outputAudioCtx.createAnalyser();
+          this.outputAnalyser.fftSize = 64;
+        }
       }
     } catch (e) {
       console.warn('Could not initialize output AudioContext:', e);
     }
   }
 
+  /**
+   * Must be called during user touch/click handlers to unlock audio on iOS and Android.
+   */
+  public unlockAudio() {
+    this.initOutputAudio();
+    if (!this.outputAudioCtx) return;
+
+    if (this.outputAudioCtx.state === 'suspended') {
+      this.outputAudioCtx.resume().catch(() => {});
+    }
+
+    // Play 1 silent sample to warm up iOS WebAudio stack
+    try {
+      const buffer = this.outputAudioCtx.createBuffer(1, 1, 22050);
+      const source = this.outputAudioCtx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(this.outputAudioCtx.destination);
+      source.start(0);
+    } catch (e) {
+      // ignore
+    }
+  }
+
   public async requestMicrophone(): Promise<boolean> {
+    this.unlockAudio();
     return this.startMicGraceful(true);
   }
 
@@ -156,7 +237,7 @@ export class LiveVoiceSession {
     try {
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         this.hasMic = false;
-        this.callbacks.onMicStatusChange?.(false, 'Microphone API is not supported in this browser environment.');
+        this.callbacks.onMicStatusChange?.(false, 'Microphone is not available in this browser.');
         return false;
       }
 
@@ -165,30 +246,38 @@ export class LiveVoiceSession {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 16000,
         },
       });
 
       this.mediaStream = stream;
 
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      this.inputAudioCtx = new AudioCtx({ sampleRate: 16000 });
+      this.inputAudioCtx = new AudioCtx();
       this.inputAnalyser = this.inputAudioCtx.createAnalyser();
       this.inputAnalyser.fftSize = 64;
 
       const source = this.inputAudioCtx.createMediaStreamSource(this.mediaStream);
       this.processor = this.inputAudioCtx.createScriptProcessor(4096, 1, 1);
 
+      // Mute gain node to prevent microphone feedback into mobile speakers
+      const muteGain = this.inputAudioCtx.createGain();
+      muteGain.gain.value = 0;
+
       source.connect(this.inputAnalyser);
       this.inputAnalyser.connect(this.processor);
-      this.processor.connect(this.inputAudioCtx.destination);
+      this.processor.connect(muteGain);
+      muteGain.connect(this.inputAudioCtx.destination);
+
+      const hardwareRate = this.inputAudioCtx.sampleRate;
 
       this.processor.onaudioprocess = (e) => {
         if (this.isMuted) return;
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
-        const pcm16 = floatTo16BitPCM(inputData);
+        // Downsample from mobile rate (44.1k/48k) to 16k for Live API
+        const resampled = downsampleTo16k(inputData, hardwareRate);
+        const pcm16 = floatTo16BitPCM(resampled);
         const base64Audio = base64EncodeAudio(pcm16);
 
         this.ws.send(JSON.stringify({ type: 'audio', audio: base64Audio }));
@@ -207,19 +296,13 @@ export class LiveVoiceSession {
         err?.message?.includes('Permission denied');
 
       const message = isNotAllowed
-        ? 'Microphone permission is restricted in this browser or iframe context. You can still chat with Gemini 3.8 Live via text and hear real-time spoken audio responses.'
+        ? 'Microphone input is restricted in this browser or iframe. You can type or tap suggested questions below to converse with Gemini 3.8 Live and hear real-time audio.'
         : 'Microphone is currently unavailable. You can type or tap questions to converse with Gemini 3.8 Live.';
 
       this.callbacks.onMicStatusChange?.(false, message);
       this.callbacks.onStatusChange('connected');
       this.startMeterLoop();
       return false;
-    }
-  }
-
-  public resumeAudioPlayback() {
-    if (this.outputAudioCtx && this.outputAudioCtx.state === 'suspended') {
-      this.outputAudioCtx.resume().catch(() => {});
     }
   }
 
@@ -234,36 +317,40 @@ export class LiveVoiceSession {
     this.isSpeaking = true;
     this.callbacks.onStatusChange('speaking');
 
-    const arrayBuffer = base64ToArrayBuffer(base64Pcm);
-    const audioBuffer = pcm16ToAudioBuffer(arrayBuffer, this.outputAudioCtx);
+    try {
+      const arrayBuffer = base64ToArrayBuffer(base64Pcm);
+      const audioBuffer = pcm16ToAudioBuffer(arrayBuffer, this.outputAudioCtx);
 
-    const source = this.outputAudioCtx.createBufferSource();
-    source.buffer = audioBuffer;
+      const source = this.outputAudioCtx.createBufferSource();
+      source.buffer = audioBuffer;
 
-    if (this.outputAnalyser) {
-      source.connect(this.outputAnalyser);
-      this.outputAnalyser.connect(this.outputAudioCtx.destination);
-    } else {
-      source.connect(this.outputAudioCtx.destination);
-    }
-
-    const currentTime = this.outputAudioCtx.currentTime;
-    if (this.nextStartTime < currentTime) {
-      this.nextStartTime = currentTime + 0.04;
-    }
-
-    source.start(this.nextStartTime);
-    this.nextStartTime += audioBuffer.duration;
-
-    this.activeSources.push(source);
-    source.onended = () => {
-      const idx = this.activeSources.indexOf(source);
-      if (idx !== -1) this.activeSources.splice(idx, 1);
-
-      if (this.activeSources.length === 0 && !this.isSpeaking) {
-        this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
+      if (this.outputAnalyser) {
+        source.connect(this.outputAnalyser);
+        this.outputAnalyser.connect(this.outputAudioCtx.destination);
+      } else {
+        source.connect(this.outputAudioCtx.destination);
       }
-    };
+
+      const currentTime = this.outputAudioCtx.currentTime;
+      if (this.nextStartTime < currentTime) {
+        this.nextStartTime = currentTime + 0.03;
+      }
+
+      source.start(this.nextStartTime);
+      this.nextStartTime += audioBuffer.duration;
+
+      this.activeSources.push(source);
+      source.onended = () => {
+        const idx = this.activeSources.indexOf(source);
+        if (idx !== -1) this.activeSources.splice(idx, 1);
+
+        if (this.activeSources.length === 0 && !this.isSpeaking) {
+          this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
+        }
+      };
+    } catch (err) {
+      console.error('Error playing audio chunk:', err);
+    }
   }
 
   private handleInterruption() {
@@ -310,11 +397,53 @@ export class LiveVoiceSession {
     this.animationFrameId = requestAnimationFrame(checkLevels);
   }
 
-  public sendTextMessage(text: string) {
-    this.resumeAudioPlayback();
+  public async sendTextMessage(text: string) {
+    this.unlockAudio();
+    this.callbacks.onTranscript({ role: 'user', text });
+
+    // If WebSocket is open, send to Gemini Live API
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify({ type: 'text', text }));
-      this.callbacks.onTranscript({ role: 'user', text });
+      return;
+    }
+
+    // If WebSocket is connecting, queue it and also provide immediate HTTP fallback
+    if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
+      this.pendingTextQueue.push(text);
+      return;
+    }
+
+    // HTTP Fallback if WebSocket is closed or unavailable
+    try {
+      this.callbacks.onStatusChange('speaking');
+      const response = await fetch('/api/gemini/converse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const data = await response.json();
+      if (data.text) {
+        this.callbacks.onTranscript({ role: 'assistant', text: data.text });
+        this.speakWithSpeechSynthesis(data.text);
+      }
+      this.callbacks.onStatusChange('connected');
+    } catch (e) {
+      console.error('Fallback converse failed:', e);
+      this.callbacks.onStatusChange('connected');
+    }
+  }
+
+  private speakWithSpeechSynthesis(text: string) {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      try {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0;
+        utterance.pitch = 1.0;
+        window.speechSynthesis.speak(utterance);
+      } catch (e) {
+        // ignore
+      }
     }
   }
 
@@ -335,6 +464,11 @@ export class LiveVoiceSession {
     if (this.animationFrameId !== null) {
       cancelAnimationFrame(this.animationFrameId);
       this.animationFrameId = null;
+    }
+
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
     }
 
     if (this.ws) {

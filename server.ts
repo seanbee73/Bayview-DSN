@@ -50,6 +50,52 @@ app.get('/api/salon-info', (_req, res) => {
   });
 });
 
+// Fallback conversation endpoint if WebSockets are blocked by client environment
+app.post('/api/gemini/converse', async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (!message) {
+      return res.status(400).json({ error: 'Message is required' });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured' });
+    }
+
+    const systemInstruction = `You are the virtual salon concierge and style advisor for Bayview Mall Creative Hair Dsn, located inside Bayview-Cummer Shopping Centre (3285 Bayview Ave, North York, Ontario M2K 0E6, Floor 1).
+You speak in a warm, welcoming, polite, and knowledgeable voice.
+Salon facts:
+- Master Barber Joe: 35+ years authentic Italian barber craft, classic scissor cuts, cranial contour & skull assessment, hot lather shaves, taper fades, beard grooming.
+- Senior Stylist Roya: 20+ years in women's hair design, dimensional balayage, bouncy blowouts, restorative hair treatments, grey blending.
+- Appointment policy: Zero-wait guaranteed on-time chairs.
+- Location: Bayview-Cummer Shopping Centre (3285 Bayview Ave, North York, ON M2K 0E6), Floor 1, free plaza parking directly outside.
+- Phone number: (416) 221-2321. Always give this exact phone number: (416) 221-2321.
+- Operating Hours:
+  * Tuesday – Friday: 9:00 AM – 6:30 PM
+  * Saturday: 8:30 AM – 5:00 PM
+  * Sunday: CLOSED (The salon is completely CLOSED on Sundays)
+  * Monday: CLOSED (The salon is completely CLOSED on Mondays)
+- CRITICAL on Sunday & Monday: Never say the salon is open on Sunday or Monday. If asked about weekend appointments, inform them the salon is open on Saturday from 8:30 AM to 5:00 PM, and is CLOSED on Sunday.
+Guidelines:
+- Keep responses concise (1 to 3 spoken sentences) so the conversation flows seamlessly.
+- If asked about booking or how to call the salon, inform them that the salon's phone number is (416) 221-2321, or they can book directly through the website.`;
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.8-flash',
+      contents: message,
+      config: {
+        systemInstruction,
+      },
+    });
+
+    const reply = response.text || 'Welcome to Bayview Mall Creative Hair. Master Barber Joe and Senior Stylist Roya are available Tuesday through Saturday.';
+    res.json({ text: reply });
+  } catch (err: any) {
+    console.error('Error in /api/gemini/converse:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate response' });
+  }
+});
+
 // WebSocket Server for Gemini Live API audio streaming
 const wss = new WebSocketServer({ noServer: true });
 
@@ -220,17 +266,34 @@ Guidelines for voice conversation:
 
     clientWs.send(JSON.stringify({ type: 'connected', voice: voiceName }));
 
-    clientWs.on('message', (data: any) => {
+    clientWs.on('message', async (data: any) => {
       try {
         const msg = JSON.parse(data.toString());
+        if (msg.type === 'ping') {
+          if (clientWs.readyState === WebSocket.OPEN) {
+            clientWs.send(JSON.stringify({ type: 'pong' }));
+          }
+          return;
+        }
+
         if (msg.type === 'audio' && msg.audio && session) {
           session.sendRealtimeInput({
             audio: { data: msg.audio, mimeType: 'audio/pcm;rate=16000' },
           });
         } else if (msg.type === 'text' && msg.text && session) {
-          session.sendRealtimeInput({
-            text: msg.text,
-          });
+          try {
+            await session.sendClientContent({
+              turns: [
+                {
+                  role: 'user',
+                  parts: [{ text: msg.text }],
+                },
+              ],
+              turnComplete: true,
+            });
+          } catch (textErr) {
+            console.error('Error sending client content to Live session:', textErr);
+          }
         }
       } catch (err) {
         console.error('Error handling message from client:', err);

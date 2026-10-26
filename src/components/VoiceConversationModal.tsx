@@ -173,22 +173,23 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
 
   const handleSendText = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!textInput.trim()) return;
+    const query = textInput.trim();
+    if (!query) return;
 
-    if (sessionRef.current && sessionStatus !== 'disconnected' && sessionStatus !== 'error') {
-      sessionRef.current.resumeAudioPlayback();
-      sessionRef.current.sendTextMessage(textInput.trim());
-      setTextInput('');
+    if (!sessionRef.current) {
+      startSession(selectedVoice);
     }
+    sessionRef.current?.unlockAudio();
+    sessionRef.current?.sendTextMessage(query);
+    setTextInput('');
   };
 
   const handleSuggestionClick = (suggestion: string) => {
-    if (sessionRef.current && sessionStatus !== 'disconnected' && sessionStatus !== 'error') {
-      sessionRef.current.resumeAudioPlayback();
-      sessionRef.current.sendTextMessage(suggestion);
-    } else {
-      setTextInput(suggestion);
+    if (!sessionRef.current) {
+      startSession(selectedVoice);
     }
+    sessionRef.current?.unlockAudio();
+    sessionRef.current?.sendTextMessage(suggestion);
   };
 
   if (!isOpen) return null;
@@ -515,7 +516,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
             />
             <button
               type="submit"
-              disabled={!textInput.trim() || sessionStatus === 'disconnected'}
+              disabled={!textInput.trim()}
               className="bg-[#9A8C73] text-white px-4 py-2 text-xs uppercase font-bold tracking-wider hover:bg-[#83765F] transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 cursor-pointer"
             >
               <Send size={14} />
