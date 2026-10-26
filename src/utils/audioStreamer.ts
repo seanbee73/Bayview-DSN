@@ -3,6 +3,11 @@
  * Fully compatible with Mobile iOS Safari, Android Chrome, and Desktop browsers.
  */
 
+export const isMobileDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  return /iPhone|iPad|iPod|Android|Mobile/i.test(navigator.userAgent);
+};
+
 export function floatTo16BitPCM(input: Float32Array): ArrayBuffer {
   const output = new DataView(new ArrayBuffer(input.length * 2));
   for (let i = 0; i < input.length; i++) {
@@ -376,8 +381,8 @@ export class LiveVoiceSession {
       // Collect PCM bytes for HTML5 WAV player
       this.currentTurnChunks.push(new Uint8Array(arrayBuffer));
 
-      // Attempt progressive Web Audio playback
-      if (this.outputAudioCtx) {
+      // On desktop, stream progressive chunks via Web Audio
+      if (!isMobileDevice() && this.outputAudioCtx) {
         if (this.outputAudioCtx.state === 'suspended') {
           this.outputAudioCtx.resume().catch(() => {});
         }
@@ -415,7 +420,8 @@ export class LiveVoiceSession {
 
   /**
    * Finalizes audio for the assistant turn into a playable WAV Blob URL.
-   * Plays through HTML5 audio ONLY if Web Audio was suspended or failed to play.
+   * On mobile phones: Plays through HTML5 Audio (bypasses iOS silent switch, loud speaker).
+   * On desktop: Web Audio already streamed chunks live, so HTML5 Audio does NOT duplicate.
    */
   private finalizeTurnAudio() {
     if (this.currentTurnChunks.length === 0) return;
@@ -435,9 +441,11 @@ export class LiveVoiceSession {
 
       this.callbacks.onAudioReady?.(audioUrl);
 
-      // Play via HTML5 Audio element ONLY if Web Audio didn't play live chunks
-      if (!this.playedViaWebAudio && this.htmlAudio) {
+      // On mobile OR if Web Audio didn't play live chunks, play via HTML5 Audio
+      const shouldPlayHtmlAudio = isMobileDevice() || !this.playedViaWebAudio;
+      if (shouldPlayHtmlAudio && this.htmlAudio) {
         this.htmlAudio.src = audioUrl;
+        this.htmlAudio.currentTime = 0;
         this.htmlAudio.play().catch((err) => {
           console.warn('HTML5 audio play blocked on mobile, manual tap ready:', err);
         });

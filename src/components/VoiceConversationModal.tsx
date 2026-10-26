@@ -102,12 +102,12 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
             const diff = target.length - current.length;
             const step = diff > 50 ? 4 : diff > 20 ? 2 : 1;
             const nextText = target.slice(0, current.length + step);
-            const finished = nextText.length === target.length && !item.isTyping;
+            const isFinished = nextText.length >= target.length;
 
             return {
               ...item,
               displayedText: nextText,
-              isTyping: !finished,
+              isTyping: !isFinished,
             };
           }
           return item;
