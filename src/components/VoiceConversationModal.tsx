@@ -15,6 +15,9 @@ import {
   Radio,
   Check,
   AlertCircle,
+  Copy,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { LiveVoiceSession } from '../utils/audioStreamer';
 import { BRAND_DATA } from '../data/salonData';
@@ -153,19 +156,37 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
         const time = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
         if (role === 'user') {
-          const newTurnId = `turn-${Date.now()}`;
-          activeTurnIdRef.current = newTurnId;
-          setTranscripts((prev) => [
-            ...prev,
-            {
-              id: `${Date.now()}-${Math.random()}`,
-              turnId: newTurnId,
-              role: 'user',
-              text,
-              displayedText: text,
-              time,
-            },
-          ]);
+          const currentTurnId = activeTurnIdRef.current || `turn-${Date.now()}`;
+          activeTurnIdRef.current = currentTurnId;
+
+          setTranscripts((prev) => {
+            const updated = [...prev];
+            const lastIndex = updated.length - 1;
+
+            if (
+              lastIndex >= 0 &&
+              updated[lastIndex].role === 'user' &&
+              updated[lastIndex].turnId === currentTurnId
+            ) {
+              const existing = updated[lastIndex];
+              const newFullText = existing.text + text;
+              updated[lastIndex] = {
+                ...existing,
+                text: newFullText,
+                displayedText: newFullText,
+              };
+            } else {
+              updated.push({
+                id: `${Date.now()}-${Math.random()}`,
+                turnId: currentTurnId,
+                role: 'user',
+                text,
+                displayedText: text,
+                time,
+              });
+            }
+            return updated;
+          });
         } else {
           // Assistant transcript streaming
           const currentTurnId = activeTurnIdRef.current || `turn-${Date.now()}`;
@@ -301,12 +322,47 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
     setTextInput('');
   };
 
+  const [copyNotice, setCopyNotice] = useState(false);
+
   const handleSuggestionClick = (suggestion: string) => {
     if (!sessionRef.current) {
       startSession(selectedVoice);
     }
     sessionRef.current?.unlockAudio();
     sessionRef.current?.sendTextMessage(suggestion);
+  };
+
+  const getTranscriptText = () => {
+    if (transcripts.length === 0) return '';
+    const formatted = transcripts
+      .map(
+        (t) =>
+          `[${t.time}] ${t.role === 'user' ? 'You' : `Bayview Concierge (${selectedVoice})`}: ${
+            t.text
+          }`
+      )
+      .join('\n\n');
+    return `BAYVIEW MALL CREATIVE HAIR DSN - CHAT & VOICE TRANSCRIPT\nDate: ${new Date().toLocaleDateString()}\nLocation: 3285 Bayview Ave, Floor 1, North York, ON M2K 0E6\nPhone: (416) 221-2321\n------------------------------------------------------------\n\n${formatted}`;
+  };
+
+  const handleCopyTranscript = () => {
+    const text = getTranscriptText();
+    if (!text) return;
+    navigator.clipboard.writeText(text);
+    setCopyNotice(true);
+    setTimeout(() => setCopyNotice(false), 2500);
+  };
+
+  const handleDownloadTranscript = () => {
+    const text = getTranscriptText();
+    if (!text) return;
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Bayview_Salon_Transcript_${Date.now()}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   if (!isOpen) return null;
@@ -349,6 +405,26 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {transcripts.length > 0 && (
+              <div className="flex items-center gap-1.5 border-r border-[#1D1D1D]/10 dark:border-white/10 pr-2 mr-1">
+                <button
+                  onClick={handleCopyTranscript}
+                  title="Copy full transcript to clipboard"
+                  className="p-1.5 text-xs text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  {copyNotice ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                  <span className="hidden sm:inline text-[11px] font-mono font-semibold">{copyNotice ? 'Copied!' : 'Copy'}</span>
+                </button>
+                <button
+                  onClick={handleDownloadTranscript}
+                  title="Download transcript (.txt)"
+                  className="p-1.5 text-xs text-neutral-600 dark:text-neutral-300 hover:text-black dark:hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Download size={14} />
+                  <span className="hidden sm:inline text-[11px] font-mono font-semibold">Save</span>
+                </button>
+              </div>
+            )}
             <button
               onClick={() => setShowVoiceSettings(!showVoiceSettings)}
               title="Voice Settings"
