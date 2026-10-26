@@ -24,6 +24,7 @@ interface TranscriptItem {
   role: 'user' | 'assistant';
   text: string;
   time: string;
+  audioUrl?: string;
 }
 
 interface VoiceConversationModalProps {
@@ -115,6 +116,18 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
       onAudioLevel: (userLvl, aiLvl) => {
         setUserAudioLevel(userLvl);
         setAiAudioLevel(aiLvl);
+      },
+      onAudioReady: (audioUrl) => {
+        setTranscripts((prev) => {
+          const updated = [...prev];
+          for (let i = updated.length - 1; i >= 0; i--) {
+            if (updated[i].role === 'assistant') {
+              updated[i] = { ...updated[i], audioUrl };
+              break;
+            }
+          }
+          return updated;
+        });
       },
       onMicStatusChange: (enabled, reason) => {
         setHasMic(enabled);
@@ -496,7 +509,28 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                       : 'bg-[#F2EFE9] dark:bg-[#222222] text-[#1D1D1D] dark:text-[#FAF9F6] border border-[#1D1D1D]/10 dark:border-white/10'
                   }`}
                 >
-                  {t.text}
+                  <p>{t.text}</p>
+                  {t.role === 'assistant' && (
+                    <div className="mt-2.5 pt-2 border-t border-black/5 dark:border-white/10 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (t.audioUrl) {
+                            sessionRef.current?.playAudioUrl(t.audioUrl);
+                          } else {
+                            sessionRef.current?.unlockAudio();
+                          }
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-[#9A8C73] text-white hover:bg-[#83765F] transition-all text-[10px] font-bold uppercase tracking-wider cursor-pointer shadow-2xs active:scale-95"
+                      >
+                        <Volume2 size={12} />
+                        <span>Hear Voice</span>
+                      </button>
+                      <span className="text-[10px] text-neutral-400 font-sans">
+                        Gemini 3.8 Live
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
@@ -523,12 +557,15 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
               <span>Ask & Hear</span>
             </button>
           </form>
-          <div className="mt-2 flex items-center justify-between text-[10px] text-neutral-400 font-sans">
+          <div className="mt-2 flex flex-col sm:flex-row items-center justify-between gap-1 text-[10px] text-neutral-400 font-sans">
             <span>Floor 1 · Bayview-Cummer Shopping Centre</span>
-            <a href={BRAND_DATA.phoneTel} className="flex items-center gap-1 text-[#9A8C73] hover:underline">
-              <Phone size={10} />
-              <span>{BRAND_DATA.phone}</span>
-            </a>
+            <div className="flex items-center gap-3">
+              <span className="hidden sm:inline text-neutral-400">Turn iPhone silent switch off to hear aloud</span>
+              <a href={BRAND_DATA.phoneTel} className="flex items-center gap-1 text-[#9A8C73] hover:underline">
+                <Phone size={10} />
+                <span>{BRAND_DATA.phone}</span>
+              </a>
+            </div>
           </div>
         </div>
 

@@ -235,8 +235,8 @@ Guidelines for voice conversation:
             clientWs.send(JSON.stringify({ type: 'interrupted' }));
           }
 
-          // Turn complete
-          if (message.serverContent?.turnComplete) {
+          // Turn complete or generation complete
+          if (message.serverContent?.turnComplete || (message.serverContent as any)?.generationComplete) {
             clientWs.send(JSON.stringify({ type: 'turnComplete' }));
           }
         },

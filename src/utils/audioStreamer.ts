@@ -33,6 +33,42 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 }
 
 /**
+ * Encodes 16-bit PCM byte array into a standard RIFF/WAV container.
+ * Natively playable on all mobile browsers (iOS Safari, Android Chrome).
+ */
+export function pcmToWav(pcmData: Uint8Array, sampleRate = 24000, numChannels = 1, bitsPerSample = 16): ArrayBuffer {
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const buffer = new ArrayBuffer(44 + pcmData.length);
+  const view = new DataView(buffer);
+
+  function writeString(v: DataView, offset: number, str: string) {
+    for (let i = 0; i < str.length; i++) {
+      v.setUint8(offset + i, str.charCodeAt(i));
+    }
+  }
+
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + pcmData.length, true);
+  writeString(view, 8, 'WAVE');
+
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // Linear PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+
+  writeString(view, 36, 'data');
+  view.setUint32(40, pcmData.length, true);
+
+  new Uint8Array(buffer, 44).set(pcmData);
+  return buffer;
+}
+
+/**
  * Resamples input audio from hardware sample rate (e.g. 44.1kHz or 48kHz on mobile)
  * down to 16kHz required by Gemini Live API.
  */
@@ -79,9 +115,10 @@ export function pcm16ToAudioBuffer(arrayBuffer: ArrayBuffer, audioCtx: AudioCont
 
 export interface LiveVoiceCallbacks {
   onStatusChange: (status: 'disconnected' | 'connecting' | 'connected' | 'listening' | 'speaking' | 'error') => void;
-  onTranscript: (item: { role: 'user' | 'assistant'; text: string }) => void;
+  onTranscript: (item: { role: 'user' | 'assistant'; text: string; audioUrl?: string }) => void;
   onAudioLevel?: (userLevel: number, aiLevel: number) => void;
   onMicStatusChange?: (hasMic: boolean, reason?: string) => void;
+  onAudioReady?: (audioUrl: string) => void;
   onError: (error: string) => void;
   onInterrupted?: () => void;
 }
@@ -105,8 +142,25 @@ export class LiveVoiceSession {
   private pendingTextQueue: string[] = [];
   private currentVoice = 'Zephyr';
 
+  // Mobile HTML5 Audio fallback player
+  private htmlAudio: HTMLAudioElement | null = null;
+  private currentTurnChunks: Uint8Array[] = [];
+  private currentTurnText = '';
+
   constructor(callbacks: LiveVoiceCallbacks) {
     this.callbacks = callbacks;
+    this.initHtmlAudio();
+  }
+
+  private initHtmlAudio() {
+    if (typeof window !== 'undefined') {
+      try {
+        this.htmlAudio = new Audio();
+        this.htmlAudio.preload = 'auto';
+      } catch (e) {
+        // ignore
+      }
+    }
   }
 
   public async connect(voice: string = 'Zephyr') {
@@ -114,7 +168,7 @@ export class LiveVoiceSession {
     try {
       this.callbacks.onStatusChange('connecting');
 
-      // Initialize output audio context without forcing custom sampleRate (safe on iOS Safari)
+      // Initialize audio context without forcing custom sampleRate (safe on iOS Safari)
       this.initOutputAudio();
 
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -152,12 +206,17 @@ export class LiveVoiceSession {
           } else if (msg.type === 'audio' && msg.audio) {
             this.handleIncomingAudio(msg.audio);
           } else if (msg.type === 'transcript') {
+            if (msg.role === 'assistant') {
+              this.currentTurnText += (this.currentTurnText ? ' ' : '') + msg.text;
+            }
             this.callbacks.onTranscript({ role: msg.role, text: msg.text });
           } else if (msg.type === 'text' && msg.text) {
+            this.currentTurnText += (this.currentTurnText ? ' ' : '') + msg.text;
             this.callbacks.onTranscript({ role: 'assistant', text: msg.text });
           } else if (msg.type === 'interrupted') {
             this.handleInterruption();
           } else if (msg.type === 'turnComplete') {
+            this.finalizeTurnAudio();
             this.isSpeaking = false;
             this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
           } else if (msg.type === 'error') {
@@ -187,8 +246,7 @@ export class LiveVoiceSession {
   }
 
   /**
-   * Initializes AudioContext safely on all mobile and desktop browsers.
-   * Does NOT specify custom sampleRate in constructor to prevent iOS Safari NotSupportedError.
+   * Safe AudioContext initialization without custom sampleRate to avoid iOS Safari NotSupportedError.
    */
   private initOutputAudio() {
     try {
@@ -206,25 +264,25 @@ export class LiveVoiceSession {
   }
 
   /**
-   * Must be called during user touch/click handlers to unlock audio on iOS and Android.
+   * Pre-activates audio on mobile touch/click events (unlocks iOS Safari AudioContext & HTML5 audio).
    */
   public unlockAudio() {
     this.initOutputAudio();
-    if (!this.outputAudioCtx) return;
 
-    if (this.outputAudioCtx.state === 'suspended') {
+    if (this.outputAudioCtx && this.outputAudioCtx.state === 'suspended') {
       this.outputAudioCtx.resume().catch(() => {});
     }
 
-    // Play 1 silent sample to warm up iOS WebAudio stack
-    try {
-      const buffer = this.outputAudioCtx.createBuffer(1, 1, 22050);
-      const source = this.outputAudioCtx.createBufferSource();
-      source.buffer = buffer;
-      source.connect(this.outputAudioCtx.destination);
-      source.start(0);
-    } catch (e) {
-      // ignore
+    if (this.htmlAudio) {
+      try {
+        // Unlock HTML5 Audio with 1 silent sample
+        this.htmlAudio.src = 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==';
+        this.htmlAudio.play().then(() => {
+          this.htmlAudio?.pause();
+        }).catch(() => {});
+      } catch (e) {
+        // ignore
+      }
     }
   }
 
@@ -275,7 +333,6 @@ export class LiveVoiceSession {
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
-        // Downsample from mobile rate (44.1k/48k) to 16k for Live API
         const resampled = downsampleTo16k(inputData, hardwareRate);
         const pcm16 = floatTo16BitPCM(resampled);
         const base64Audio = base64EncodeAudio(pcm16);
@@ -308,48 +365,92 @@ export class LiveVoiceSession {
 
   private handleIncomingAudio(base64Pcm: string) {
     this.initOutputAudio();
-    if (!this.outputAudioCtx) return;
-
-    if (this.outputAudioCtx.state === 'suspended') {
-      this.outputAudioCtx.resume().catch(() => {});
-    }
-
     this.isSpeaking = true;
     this.callbacks.onStatusChange('speaking');
 
     try {
       const arrayBuffer = base64ToArrayBuffer(base64Pcm);
-      const audioBuffer = pcm16ToAudioBuffer(arrayBuffer, this.outputAudioCtx);
+      // Collect PCM bytes for HTML5 WAV player
+      this.currentTurnChunks.push(new Uint8Array(arrayBuffer));
 
-      const source = this.outputAudioCtx.createBufferSource();
-      source.buffer = audioBuffer;
-
-      if (this.outputAnalyser) {
-        source.connect(this.outputAnalyser);
-        this.outputAnalyser.connect(this.outputAudioCtx.destination);
-      } else {
-        source.connect(this.outputAudioCtx.destination);
-      }
-
-      const currentTime = this.outputAudioCtx.currentTime;
-      if (this.nextStartTime < currentTime) {
-        this.nextStartTime = currentTime + 0.03;
-      }
-
-      source.start(this.nextStartTime);
-      this.nextStartTime += audioBuffer.duration;
-
-      this.activeSources.push(source);
-      source.onended = () => {
-        const idx = this.activeSources.indexOf(source);
-        if (idx !== -1) this.activeSources.splice(idx, 1);
-
-        if (this.activeSources.length === 0 && !this.isSpeaking) {
-          this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
+      // Attempt progressive Web Audio playback
+      if (this.outputAudioCtx) {
+        if (this.outputAudioCtx.state === 'suspended') {
+          this.outputAudioCtx.resume().catch(() => {});
         }
-      };
+
+        const audioBuffer = pcm16ToAudioBuffer(arrayBuffer, this.outputAudioCtx);
+        const source = this.outputAudioCtx.createBufferSource();
+        source.buffer = audioBuffer;
+
+        if (this.outputAnalyser) {
+          source.connect(this.outputAnalyser);
+          this.outputAnalyser.connect(this.outputAudioCtx.destination);
+        } else {
+          source.connect(this.outputAudioCtx.destination);
+        }
+
+        const currentTime = this.outputAudioCtx.currentTime;
+        if (this.nextStartTime < currentTime) {
+          this.nextStartTime = currentTime + 0.03;
+        }
+
+        source.start(this.nextStartTime);
+        this.nextStartTime += audioBuffer.duration;
+
+        this.activeSources.push(source);
+        source.onended = () => {
+          const idx = this.activeSources.indexOf(source);
+          if (idx !== -1) this.activeSources.splice(idx, 1);
+        };
+      }
     } catch (err) {
-      console.error('Error playing audio chunk:', err);
+      console.error('Error playing incoming audio chunk:', err);
+    }
+  }
+
+  /**
+   * Finalizes audio for the assistant turn into a playable WAV Blob URL.
+   * Plays automatically through HTML5 audio if Web Audio was inactive/silent.
+   */
+  private finalizeTurnAudio() {
+    if (this.currentTurnChunks.length === 0) return;
+
+    try {
+      const totalLength = this.currentTurnChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+      const mergedPcm = new Uint8Array(totalLength);
+      let offset = 0;
+      for (const chunk of this.currentTurnChunks) {
+        mergedPcm.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      const wavBuffer = pcmToWav(mergedPcm, 24000);
+      const blob = new Blob([wavBuffer], { type: 'audio/wav' });
+      const audioUrl = URL.createObjectURL(blob);
+
+      this.callbacks.onAudioReady?.(audioUrl);
+
+      // Play via HTML5 Audio element for guaranteed mobile audibility
+      if (this.htmlAudio) {
+        this.htmlAudio.src = audioUrl;
+        this.htmlAudio.play().catch((err) => {
+          console.warn('HTML5 audio play blocked on mobile, manual tap ready:', err);
+        });
+      }
+
+      // Reset chunks for next turn
+      this.currentTurnChunks = [];
+      this.currentTurnText = '';
+    } catch (e) {
+      console.error('Error finalizing turn audio:', e);
+    }
+  }
+
+  public playAudioUrl(url: string) {
+    if (this.htmlAudio) {
+      this.htmlAudio.src = url;
+      this.htmlAudio.play().catch(() => {});
     }
   }
 
@@ -364,6 +465,13 @@ export class LiveVoiceSession {
     }
     this.activeSources = [];
     this.nextStartTime = 0;
+    this.currentTurnChunks = [];
+    this.currentTurnText = '';
+    if (this.htmlAudio) {
+      try {
+        this.htmlAudio.pause();
+      } catch (e) {}
+    }
     this.isSpeaking = false;
     this.callbacks.onInterrupted?.();
     this.callbacks.onStatusChange(this.hasMic ? 'listening' : 'connected');
@@ -383,11 +491,11 @@ export class LiveVoiceSession {
         userLevel = Math.min(100, Math.round((sum / data.length / 255) * 100));
       }
 
-      if (this.outputAnalyser && this.activeSources.length > 0) {
+      if (this.outputAnalyser && (this.activeSources.length > 0 || (this.htmlAudio && !this.htmlAudio.paused))) {
         const data = new Uint8Array(this.outputAnalyser.frequencyBinCount);
         this.outputAnalyser.getByteFrequencyData(data);
         const sum = data.reduce((a, b) => a + b, 0);
-        aiLevel = Math.min(100, Math.round((sum / data.length / 255) * 100));
+        aiLevel = Math.min(100, Math.max(30, Math.round((sum / data.length / 255) * 100)));
       }
 
       this.callbacks.onAudioLevel?.(userLevel, aiLevel);
@@ -399,6 +507,8 @@ export class LiveVoiceSession {
 
   public async sendTextMessage(text: string) {
     this.unlockAudio();
+    this.currentTurnChunks = [];
+    this.currentTurnText = '';
     this.callbacks.onTranscript({ role: 'user', text });
 
     // If WebSocket is open, send to Gemini Live API
@@ -407,13 +517,13 @@ export class LiveVoiceSession {
       return;
     }
 
-    // If WebSocket is connecting, queue it and also provide immediate HTTP fallback
+    // If WebSocket is connecting, queue it
     if (this.ws && this.ws.readyState === WebSocket.CONNECTING) {
       this.pendingTextQueue.push(text);
       return;
     }
 
-    // HTTP Fallback if WebSocket is closed or unavailable
+    // HTTP Fallback if WebSocket is closed
     try {
       this.callbacks.onStatusChange('speaking');
       const response = await fetch('/api/gemini/converse', {
