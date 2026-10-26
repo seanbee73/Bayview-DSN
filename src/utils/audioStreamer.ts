@@ -381,8 +381,8 @@ export class LiveVoiceSession {
       // Collect PCM bytes for HTML5 WAV player
       this.currentTurnChunks.push(new Uint8Array(arrayBuffer));
 
-      // On desktop, stream progressive chunks via Web Audio
-      if (!isMobileDevice() && this.outputAudioCtx) {
+      // Stream progressive chunks via Web Audio
+      if (this.outputAudioCtx) {
         if (this.outputAudioCtx.state === 'suspended') {
           this.outputAudioCtx.resume().catch(() => {});
         }
@@ -420,8 +420,7 @@ export class LiveVoiceSession {
 
   /**
    * Finalizes audio for the assistant turn into a playable WAV Blob URL.
-   * On mobile phones: Plays through HTML5 Audio (bypasses iOS silent switch, loud speaker).
-   * On desktop: Web Audio already streamed chunks live, so HTML5 Audio does NOT duplicate.
+   * Passes audioUrl for on-demand playback without duplicate auto-playback.
    */
   private finalizeTurnAudio() {
     if (this.currentTurnChunks.length === 0) return;
@@ -440,16 +439,6 @@ export class LiveVoiceSession {
       const audioUrl = URL.createObjectURL(blob);
 
       this.callbacks.onAudioReady?.(audioUrl);
-
-      // On mobile OR if Web Audio didn't play live chunks, play via HTML5 Audio
-      const shouldPlayHtmlAudio = isMobileDevice() || !this.playedViaWebAudio;
-      if (shouldPlayHtmlAudio && this.htmlAudio) {
-        this.htmlAudio.src = audioUrl;
-        this.htmlAudio.currentTime = 0;
-        this.htmlAudio.play().catch((err) => {
-          console.warn('HTML5 audio play blocked on mobile, manual tap ready:', err);
-        });
-      }
 
       // Reset chunks and flags for next turn
       this.playedViaWebAudio = false;

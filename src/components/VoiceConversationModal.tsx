@@ -206,6 +206,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
               updated[lastIndex] = {
                 ...existing,
                 text: newFullText,
+                displayedText: newFullText,
                 isTyping: true,
               };
             } else {
@@ -214,7 +215,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                 turnId: currentTurnId,
                 role: 'assistant',
                 text,
-                displayedText: '',
+                displayedText: text,
                 isTyping: true,
                 time,
               });
