@@ -147,6 +147,7 @@ export class LiveVoiceSession {
   private htmlAudio: HTMLAudioElement | null = null;
   private currentTurnChunks: Uint8Array[] = [];
   private currentTurnText = '';
+  private playedViaWebAudio = false;
 
   constructor(callbacks: LiveVoiceCallbacks) {
     this.callbacks = callbacks;
@@ -399,6 +400,7 @@ export class LiveVoiceSession {
 
         source.start(this.nextStartTime);
         this.nextStartTime += audioBuffer.duration;
+        this.playedViaWebAudio = true;
 
         this.activeSources.push(source);
         source.onended = () => {
@@ -413,7 +415,7 @@ export class LiveVoiceSession {
 
   /**
    * Finalizes audio for the assistant turn into a playable WAV Blob URL.
-   * Plays automatically through HTML5 audio if Web Audio was inactive/silent.
+   * Plays through HTML5 audio ONLY if Web Audio was suspended or failed to play.
    */
   private finalizeTurnAudio() {
     if (this.currentTurnChunks.length === 0) return;
@@ -433,15 +435,16 @@ export class LiveVoiceSession {
 
       this.callbacks.onAudioReady?.(audioUrl);
 
-      // Play via HTML5 Audio element for guaranteed mobile audibility
-      if (this.htmlAudio) {
+      // Play via HTML5 Audio element ONLY if Web Audio didn't play live chunks
+      if (!this.playedViaWebAudio && this.htmlAudio) {
         this.htmlAudio.src = audioUrl;
         this.htmlAudio.play().catch((err) => {
           console.warn('HTML5 audio play blocked on mobile, manual tap ready:', err);
         });
       }
 
-      // Reset chunks for next turn
+      // Reset chunks and flags for next turn
+      this.playedViaWebAudio = false;
       this.currentTurnChunks = [];
       this.currentTurnText = '';
     } catch (e) {
@@ -450,8 +453,10 @@ export class LiveVoiceSession {
   }
 
   public playAudioUrl(url: string) {
+    this.handleInterruption();
     if (this.htmlAudio) {
       this.htmlAudio.src = url;
+      this.htmlAudio.currentTime = 0;
       this.htmlAudio.play().catch(() => {});
     }
   }

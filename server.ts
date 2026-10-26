@@ -207,7 +207,9 @@ Guidelines for voice conversation:
           }
 
           // User speech transcription
-          const inputTx = (message.serverContent as any)?.inputAudioTranscription?.text;
+          const inputTx =
+            (message.serverContent as any)?.inputTranscription?.text ??
+            (message.serverContent as any)?.inputAudioTranscription?.text;
           if (inputTx) {
             clientWs.send(
               JSON.stringify({
@@ -219,7 +221,9 @@ Guidelines for voice conversation:
           }
 
           // Model speech transcription
-          const outputTx = (message.serverContent as any)?.outputAudioTranscription?.text;
+          const outputTx =
+            (message.serverContent as any)?.outputTranscription?.text ??
+            (message.serverContent as any)?.outputAudioTranscription?.text;
           if (outputTx) {
             clientWs.send(
               JSON.stringify({

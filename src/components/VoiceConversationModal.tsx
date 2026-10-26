@@ -181,7 +181,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
               updated[lastIndex].turnId === currentTurnId
             ) {
               const existing = updated[lastIndex];
-              const newFullText = existing.text + (existing.text ? ' ' : '') + text;
+              const newFullText = existing.text + text;
               updated[lastIndex] = {
                 ...existing,
                 text: newFullText,
@@ -614,7 +614,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                   }`}
                 >
                   <p className="whitespace-pre-wrap">
-                    {t.role === 'assistant' ? (t.displayedText || t.text) : t.text}
+                    {t.role === 'assistant' ? (t.displayedText !== undefined ? t.displayedText : t.text) : t.text}
                     {t.role === 'assistant' && (t.isTyping || (t.displayedText || '').length < t.text.length) && (
                       <span className="inline-block w-1.5 h-3.5 bg-[#9A8C73] dark:bg-amber-400 ml-1 animate-pulse align-middle" />
                     )}
