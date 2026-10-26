@@ -83,48 +83,53 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
     transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [transcripts]);
 
-  // Option 1: Synchronized Typewriter Animation Loop
+  // Option 1: Synchronized 60fps Typewriter Animation Loop (Touch & Mobile Optimized)
   useEffect(() => {
     if (!isOpen) return;
 
-    const interval = setInterval(() => {
-      let needsScroll = false;
+    let animId: number;
+    let lastTime = 0;
 
-      setTranscripts((prev) => {
-        let changed = false;
-        const updated = prev.map((item) => {
-          if (item.role !== 'assistant') return item;
+    const tick = (time: number) => {
+      // Paced at ~20ms intervals (50 updates/sec), unthrottled on mobile WebKit/Blink
+      if (time - lastTime >= 20) {
+        lastTime = time;
 
-          const target = item.text || '';
-          const current = item.displayedText || '';
+        setTranscripts((prev) => {
+          let hasChange = false;
+          const updated = prev.map((item) => {
+            if (item.role !== 'assistant') return item;
 
-          if (current.length < target.length) {
-            changed = true;
-            needsScroll = true;
-            // Dynamically calculate typewriter speed based on backlog length
-            const diff = target.length - current.length;
-            const step = diff > 50 ? 4 : diff > 20 ? 2 : 1;
-            const nextText = target.slice(0, current.length + step);
-            const isFinished = nextText.length >= target.length;
+            const target = item.text || '';
+            const current = item.displayedText || '';
 
-            return {
-              ...item,
-              displayedText: nextText,
-              isTyping: !isFinished,
-            };
-          }
-          return item;
+            if (current.length < target.length) {
+              hasChange = true;
+              const backlog = target.length - current.length;
+              // Adaptive typing pace: smoothly accelerates if network delivers large blocks
+              const step = backlog > 40 ? 3 : backlog > 15 ? 2 : 1;
+              const nextLen = Math.min(target.length, current.length + step);
+              const nextText = target.slice(0, nextLen);
+              const isFinished = nextLen >= target.length && !item.isTyping;
+
+              return {
+                ...item,
+                displayedText: nextText,
+                isTyping: !isFinished,
+              };
+            }
+            return item;
+          });
+
+          return hasChange ? updated : prev;
         });
-
-        return changed ? updated : prev;
-      });
-
-      if (needsScroll) {
-        transcriptEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }
-    }, 20);
 
-    return () => clearInterval(interval);
+      animId = requestAnimationFrame(tick);
+    };
+
+    animId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animId);
   }, [isOpen]);
 
   // Connect when modal opens
@@ -206,7 +211,6 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
               updated[lastIndex] = {
                 ...existing,
                 text: newFullText,
-                displayedText: newFullText,
                 isTyping: true,
               };
             } else {
@@ -215,7 +219,7 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                 turnId: currentTurnId,
                 role: 'assistant',
                 text,
-                displayedText: text,
+                displayedText: '',
                 isTyping: true,
                 time,
               });
@@ -581,13 +585,14 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
                 onClick={handleToggleMute}
                 disabled={sessionStatus === 'disconnected' || sessionStatus === 'error'}
                 title={isMuted ? 'Unmute Microphone' : 'Mute Microphone'}
-                className={`p-3 border transition-all ${
+                className={`flex items-center gap-2 px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all border cursor-pointer active:scale-95 ${
                   isMuted
                     ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                    : 'border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 hover:border-black dark:hover:border-white'
+                    : 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300'
                 } disabled:opacity-40 disabled:cursor-not-allowed`}
               >
-                {isMuted ? <MicOff size={18} /> : <Mic size={18} />}
+                {isMuted ? <MicOff size={16} /> : <Mic size={16} />}
+                <span>{isMuted ? 'Mic Muted' : 'Mic Active'}</span>
               </button>
             )}
 
@@ -595,10 +600,10 @@ export const VoiceConversationModal: React.FC<VoiceConversationModalProps> = ({
             {!hasMic && sessionStatus !== 'disconnected' && sessionStatus !== 'error' && (
               <button
                 onClick={handleRequestMic}
-                className="flex items-center gap-2 border border-[#9A8C73] text-[#9A8C73] hover:bg-[#9A8C73] hover:text-white px-4 py-3 text-xs font-semibold uppercase tracking-wider transition-all"
+                className="flex items-center gap-2 bg-[#9A8C73] hover:bg-[#83765F] text-white px-4 py-3 text-xs font-bold uppercase tracking-wider transition-all shadow-xs cursor-pointer active:scale-95"
               >
-                <Mic size={15} />
-                <span>Enable Mic</span>
+                <Mic size={16} />
+                <span>Tap to Speak (Mic)</span>
               </button>
             )}
 

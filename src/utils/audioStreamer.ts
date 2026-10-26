@@ -207,9 +207,6 @@ export class LiveVoiceSession {
                 this.ws.send(JSON.stringify({ type: 'text', text }));
               }
             }
-
-            // Attempt mic initialization
-            this.startMicGraceful();
           } else if (msg.type === 'audio' && msg.audio) {
             this.handleIncomingAudio(msg.audio);
           } else if (msg.type === 'transcript') {
@@ -337,7 +334,8 @@ export class LiveVoiceSession {
       const hardwareRate = this.inputAudioCtx.sampleRate;
 
       this.processor.onaudioprocess = (e) => {
-        if (this.isMuted) return;
+        // Prevent acoustic feedback echo: silence microphone while AI is speaking
+        if (this.isMuted || this.isSpeaking) return;
         if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
 
         const inputData = e.inputBuffer.getChannelData(0);
