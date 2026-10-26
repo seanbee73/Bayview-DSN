@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, X, Sun, Moon, Phone, MapPin, Sparkles, Lock, Newspaper } from 'lucide-react';
+import { Menu, X, Sun, Moon, Phone, MapPin, Sparkles, Lock, Newspaper, Mic } from 'lucide-react';
 import { BRAND_DATA, ANNOUNCEMENT_DATA } from '../data/salonData';
 import { AnnouncementInfo } from '../types';
 
@@ -7,7 +7,7 @@ interface NavbarProps {
   darkMode: boolean;
   onToggleTheme: () => void;
   onOpenBooking: () => void;
-  onOpenChat?: () => void;
+  onOpenVoice?: () => void;
   announcement?: AnnouncementInfo;
   isAdmin?: boolean;
   onOpenAdmin?: () => void;
@@ -17,7 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   darkMode,
   onToggleTheme,
   onOpenBooking,
-  onOpenChat,
+  onOpenVoice,
   announcement = ANNOUNCEMENT_DATA,
   isAdmin = false,
   onOpenAdmin,
@@ -114,16 +114,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             >
               Hours & Location
             </a>
-            {onOpenChat && (
-              <button
-                type="button"
-                onClick={onOpenChat}
-                className="text-xs uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 hover:text-[#9A8C73] dark:hover:text-amber-300 font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-              >
-                <Sparkles size={13} className="text-amber-500" />
-                <span>AI Concierge</span>
-              </button>
-            )}
           </div>
 
           {/* Actions */}
@@ -135,6 +125,24 @@ export const Navbar: React.FC<NavbarProps> = ({
               <Phone size={14} className="text-[#9A8C73]" />
               <span className="font-mono">{BRAND_DATA.phone}</span>
             </a>
+
+            {onOpenVoice && (
+              <button
+                id="nav-voice-concierge-btn"
+                onClick={onOpenVoice}
+                title="Speak to Bayview Concierge (Gemini 3.8 Live)"
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-2 border border-[#9A8C73]/40 hover:border-[#9A8C73] bg-[#9A8C73]/10 hover:bg-[#9A8C73] text-[#1D1D1D] dark:text-[#FAF9F6] hover:text-white dark:hover:text-white transition-all text-[10px] font-bold uppercase tracking-[0.15em] cursor-pointer"
+              >
+                <div className="relative flex items-center justify-center">
+                  <Mic size={13} className="text-[#9A8C73] group-hover:text-white" />
+                  <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                  </span>
+                </div>
+                <span>Live Voice</span>
+              </button>
+            )}
 
             <button
               id="theme-toggle-btn"
@@ -222,19 +230,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 Hours & Mall Location
               </a>
-              {onOpenChat && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    onOpenChat();
-                  }}
-                  className="text-left text-xs uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400 hover:text-amber-500 font-semibold flex items-center gap-2 cursor-pointer py-1"
-                >
-                  <Sparkles size={14} className="text-amber-500" />
-                  <span>AI Style Concierge (Gemini)</span>
-                </button>
-              )}
               {onOpenAdmin && (
                 <button
                   onClick={() => {
@@ -258,6 +253,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-[10px] text-[#9A8C73] font-bold uppercase">{darkMode ? 'Dark' : 'Light'}</span>
               </button>
               <div className="pt-4 border-t border-[#1D1D1D]/10 dark:border-white/10 flex flex-col gap-3">
+                {onOpenVoice && (
+                  <button
+                    onClick={() => {
+                      setMobileMenuOpen(false);
+                      onOpenVoice();
+                    }}
+                    className="w-full bg-[#9A8C73] text-white py-3 text-xs font-bold uppercase tracking-[0.2em] hover:bg-[#83765F] transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Mic size={15} /> Live Voice Concierge (Gemini 3.8)
+                  </button>
+                )}
                 <a
                   href={BRAND_DATA.phoneTel}
                   className="w-full bg-white/10 dark:bg-white/5 border border-[#1D1D1D]/15 dark:border-white/15 text-[#1D1D1D] dark:text-white py-3 text-xs font-semibold uppercase tracking-[0.2em] hover:bg-[#9A8C73] hover:text-white transition-colors text-center flex items-center justify-center gap-2"

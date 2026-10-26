@@ -17,8 +17,8 @@ import { LookbookModal } from './components/LookbookModal';
 import { StylistModal } from './components/StylistModal';
 import { PostModal } from './components/PostModal';
 import { AdminModal } from './components/AdminModal';
-import { GeminiChatModal } from './components/GeminiChatModal';
-import { GeminiChatFloatingButton } from './components/GeminiChatFloatingButton';
+import { VoiceConversationModal } from './components/VoiceConversationModal';
+import { VoiceFloatingButton } from './components/VoiceFloatingButton';
 import {
   Stylist,
   LookbookItem,
@@ -43,8 +43,8 @@ export default function App() {
 
   // Modal States
   const [bookingModalOpen, setBookingModalOpen] = useState(false);
+  const [voiceModalOpen, setVoiceModalOpen] = useState(false);
   const [adminModalOpen, setAdminModalOpen] = useState(false);
-  const [chatModalOpen, setChatModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<SignatureService | AdditionalService | null>(null);
   const [selectedStylistForBooking, setSelectedStylistForBooking] = useState<string | undefined>(undefined);
   const [activeLookbookItem, setActiveLookbookItem] = useState<LookbookItem | null>(null);
@@ -332,14 +332,17 @@ export default function App() {
         darkMode={darkMode}
         onToggleTheme={toggleTheme}
         onOpenBooking={handleOpenBooking}
-        onOpenChat={() => setChatModalOpen(true)}
+        onOpenVoice={() => setVoiceModalOpen(true)}
         announcement={announcement}
         isAdmin={Boolean(adminSession?.authenticated)}
         onOpenAdmin={() => setAdminModalOpen(true)}
       />
 
       {/* Hero Section */}
-      <Hero onOpenBooking={handleOpenBooking} />
+      <Hero
+        onOpenBooking={handleOpenBooking}
+        onOpenVoice={() => setVoiceModalOpen(true)}
+      />
 
       {/* Heritage / Philosophy Section */}
       <Philosophy />
@@ -354,7 +357,7 @@ export default function App() {
       <Testimonial />
 
       {/* Head Contour Consultation & Analysis Process */}
-      <ConsultationProcess onOpenChat={() => setChatModalOpen(true)} />
+      <ConsultationProcess />
 
       {/* Master Craftsmen: Joe & Roya */}
       <TeamSection onSelectStylist={handleSelectStylist} />
@@ -416,6 +419,14 @@ export default function App() {
         onOpenBooking={handleOpenBooking}
       />
 
+      {/* Real-time Voice Conversation (Gemini 3.8 Live API) */}
+      <VoiceFloatingButton onClick={() => setVoiceModalOpen(true)} />
+      <VoiceConversationModal
+        isOpen={voiceModalOpen}
+        onClose={() => setVoiceModalOpen(false)}
+        onOpenBooking={handleOpenBooking}
+      />
+
       {/* Private Admin Modal Area */}
       <AdminModal
         isOpen={adminModalOpen}
@@ -437,20 +448,6 @@ export default function App() {
         adminSession={adminSession}
         onLogin={handleAdminLogin}
         onLogout={handleAdminLogout}
-      />
-
-      {/* Floating Salon AI Style Concierge Launcher */}
-      <GeminiChatFloatingButton
-        isOpen={chatModalOpen}
-        onClick={() => setChatModalOpen(true)}
-      />
-
-      {/* Gemini Multi-Turn Chatbot Modal */}
-      <GeminiChatModal
-        isOpen={chatModalOpen}
-        onClose={() => setChatModalOpen(false)}
-        onOpenBooking={handleOpenBooking}
-        onBookWithStylist={handleBookWithStylist}
       />
     </div>
   );

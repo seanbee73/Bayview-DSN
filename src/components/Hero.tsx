@@ -1,12 +1,13 @@
 import React from 'react';
-import { MapPin, ArrowRight, Phone, Star, CheckCircle } from 'lucide-react';
+import { MapPin, ArrowRight, Phone, Star, CheckCircle, Mic, Sparkles } from 'lucide-react';
 import { HERO_DATA, BRAND_DATA } from '../data/salonData';
 
 interface HeroProps {
   onOpenBooking: () => void;
+  onOpenVoice?: () => void;
 }
 
-export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
+export const Hero: React.FC<HeroProps> = ({ onOpenBooking, onOpenVoice }) => {
   return (
     <header className="min-h-screen pt-28 md:pt-32 grid grid-cols-1 lg:grid-cols-12 border-b border-[#1D1D1D]/10 dark:border-white/10">
       {/* Text Content */}
@@ -73,18 +74,27 @@ export const Hero: React.FC<HeroProps> = ({ onOpenBooking }) => {
           >
             Book Appointment <ArrowRight size={14} />
           </button>
+          {onOpenVoice && (
+            <button
+              onClick={onOpenVoice}
+              className="px-6 py-4 bg-[#9A8C73]/15 hover:bg-[#9A8C73] border border-[#9A8C73]/40 hover:border-[#9A8C73] text-[#1D1D1D] dark:text-white hover:text-white dark:hover:text-white text-xs font-bold tracking-[0.15em] uppercase transition-all flex items-center justify-center gap-2 rounded-none cursor-pointer group"
+            >
+              <div className="relative flex items-center justify-center">
+                <Mic size={14} className="text-[#9A8C73] group-hover:text-white" />
+                <span className="absolute -top-0.5 -right-0.5 flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+              </div>
+              <span>Live Voice Concierge</span>
+            </button>
+          )}
           <a
             href={BRAND_DATA.phoneTel}
-            className="px-7 py-4 border border-[#1D1D1D]/20 dark:border-white/20 text-[#1D1D1D] dark:text-white text-xs font-semibold tracking-[0.15em] uppercase hover:border-[#9A8C73] hover:text-[#9A8C73] transition-colors flex items-center justify-center gap-2 rounded-none"
+            className="px-6 py-4 border border-[#1D1D1D]/20 dark:border-white/20 text-[#1D1D1D] dark:text-white text-xs font-semibold tracking-[0.15em] uppercase hover:border-[#9A8C73] hover:text-[#9A8C73] transition-colors flex items-center justify-center gap-2 rounded-none"
           >
             <Phone size={14} className="text-[#9A8C73]" />
             <span>Call {BRAND_DATA.phone}</span>
-          </a>
-          <a
-            href="#services"
-            className="px-5 py-4 text-[#1D1D1D]/80 dark:text-white/80 text-xs font-semibold tracking-[0.2em] uppercase hover:text-[#9A8C73] transition-colors flex items-center justify-center gap-1 rounded-none text-center"
-          >
-            Explore Services
           </a>
         </div>
       </div>
